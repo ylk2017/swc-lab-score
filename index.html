@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Science Class Mark &amp; Rewards (Live Cloud Sync)</title>
+    <!-- Firebase v10 Compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #475569;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --warning: #f59e0b;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang HK", "Microsoft JhengHei", sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 16px 20px 40px 20px;
+            color: #1e293b;
+        }
+
+        /* --- Top Sync & Mode Bar --- */
+        .topbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            padding: 10px 14px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .sync-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            border: 1px solid transparent;
+        }
+        .status-connecting { background: #fef3c7; color: #b45309; border-color: #fde68a; }
+        .status-online { background: #dcfce7; color: #15803d; border-color: #86efac; }
+        .status-offline { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+
+        .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            display: inline-block;
+            background: currentColor;
+        }
+        .status-online .dot {
+            animation: pulseDot 1.8s infinite;
+        }
+        @keyframes pulseDot {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.35); opacity: 0.55; }
+        }
+
+        .top-btn {
+            padding: 7px 12px;
+            min-height: 36px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #334155;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .top-btn:hover { background: #f1f5f9; }
+        .top-btn.locked { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+
+        /* --- Live Event Toast Banner --- */
+        .live-toast {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #1e40af, #2563eb);
+            color: #ffffff;
+            padding: 12px 18px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
+            animation: slideDown 0.25s ease-out;
+        }
+        .live-toast.show { display: flex; }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- Diagnostic Alert Banner --- */
+        .diag-banner {
+            display: none;
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .diag-banner.show { display: flex; }
+
+        /* --- Tabs Navigation --- */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            min-height: 44px;
+            font-size: 1.05rem;
+            font-weight: bold;
+            border: none;
+            background: transparent;
+            color: var(--secondary);
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { background: #e2e8f0; }
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* --- Header --- */
+        .header {
+            background: var(--card-bg);
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 22px;
+            gap: 15px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.45rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .class-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .class-selector {
+            padding: 9px 14px;
+            min-height: 44px;
+            font-size: 0.98rem;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            background-color: white;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--secondary);
+        }
+
+        /* --- Grid & Cards --- */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin-bottom: 36px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 18px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            border-top: 5px solid var(--primary);
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .card:hover { transform: translateY(-2px); }
+        .card.pulse-up { animation: cardGlowUp 0.7s ease; }
+        .card.pulse-down { animation: cardGlowDown 0.7s ease; }
+        @keyframes cardGlowUp {
+            0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55); transform: scale(1.02); }
+            100% { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08); transform: scale(1); }
+        }
+        @keyframes cardGlowDown {
+            0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); transform: scale(0.99); }
+            100% { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08); transform: scale(1); }
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .group-title {
+            font-weight: 700;
+            color: var(--secondary);
+            font-size: 1.05rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .energy-badge {
+            background: #fef3c7;
+            color: #d97706;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            border: 1px solid #fde68a;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .score-display {
+            font-size: 3.8rem;
+            font-weight: 800;
+            color: #334155;
+            margin: 6px 0 16px 0;
+            line-height: 1;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 14px;
+        }
+        .btn {
+            border: none;
+            padding: 10px 0;
+            min-height: 48px;
+            width: 100%;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.15s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn:hover:not(:disabled) { opacity: 0.85; }
+        .btn:active:not(:disabled) { transform: scale(0.95); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-minus { background-color: #fee2e2; color: var(--danger); }
+        .btn-plus { background-color: #dcfce7; color: var(--success); }
+
+        .btn-energy {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            font-size: 0.98rem;
+            padding: 11px;
+            min-height: 44px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(217, 119, 6, 0.3);
+        }
+        .btn-energy:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(217, 119, 6, 0.4); }
+        .btn-energy:active:not(:disabled) { transform: scale(0.98); }
+        .btn-energy:disabled {
+            background: #e2e8f0;
+            color: #94a3b8;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* --- Data Management Section --- */
+        .data-controls {
+            background: #e0f2fe;
+            border: 1px solid #bae6fd;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 32px;
+        }
+        .data-title { font-weight: bold; margin-bottom: 14px; color: #0369a1; font-size: 1.02rem; }
+        .control-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .action-btn {
+            padding: 10px 18px;
+            min-height: 44px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-add { background-color: #10b981; color: white; }
+        .btn-add:hover:not(:disabled) { background-color: #059669; }
+        .btn-download { background-color: #0ea5e9; color: white; }
+        .btn-download:hover:not(:disabled) { background-color: #0284c7; }
+        .btn-upload { background-color: #64748b; color: white; }
+        .btn-upload:hover:not(:disabled) { background-color: #475569; }
+        .btn-copy { background-color: #8b5cf6; color: white; }
+        .btn-copy:hover:not(:disabled) { background-color: #7c3aed; }
+        .btn-reset { background-color: white; color: var(--danger); border: 1px solid var(--danger); margin-left: auto; }
+        .btn-reset:hover:not(:disabled) { background-color: #fef2f2; }
+
+        /* --- Roulette Section --- */
+        .roulette-layout {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            padding: 28px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);
+        }
+        .input-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 28px;
+            width: 100%;
+            max-width: 520px;
+        }
+        .input-section input {
+            flex: 1;
+            padding: 12px;
+            min-height: 48px;
+            font-size: 1.05rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            outline: none;
+        }
+        .input-section input:focus { border-color: var(--primary); }
+        .input-section button {
+            padding: 12px 24px;
+            min-height: 48px;
+            font-size: 1.05rem;
+            font-weight: bold;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .input-section button:hover:not(:disabled) { background: var(--primary-dark); }
+        .input-section button:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        .wheel-wrapper { position: relative; width: 320px; height: 320px; margin: 0 auto; }
+        .pointer {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 35px solid var(--danger);
+            z-index: 10;
+            filter: drop-shadow(0 3px 3px rgba(0,0,0,0.3));
+        }
+        canvas {
+            border-radius: 50%;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+            border: 6px solid #f1f5f9;
+            background: white;
+        }
+        .prize-result {
+            margin-top: 28px;
+            min-height: 80px;
+            text-align: center;
+            font-size: 1.18rem;
+            color: #334155;
+            padding: 16px;
+            border-radius: 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        /* --- History Table --- */
+        .history-section {
+            margin-top: 32px;
+            width: 100%;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; font-weight: 600; color: var(--secondary); }
+        .use-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 7px 12px;
+            min-height: 36px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+        .use-btn:hover:not(:disabled) { background: #059669; }
+        .use-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .used-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e2e8f0;
+            color: #64748b;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        .used-row { opacity: 0.6; background: #f8fafc; }
+
+        /* --- Custom Modal --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.55);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(2px);
+            padding: 16px;
+        }
+        .modal-box {
+            background: white;
+            padding: 24px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+            text-align: center;
+            animation: modalPop 0.22s ease-out;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-box.wide { max-width: 580px; text-align: left; }
+        @keyframes modalPop {
+            0% { transform: scale(0.92); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .modal-title { font-size: 1.3rem; font-weight: bold; margin-bottom: 12px; color: #1e293b; }
+        .modal-message { font-size: 1.02rem; color: #475569; margin-bottom: 18px; line-height: 1.55; }
+        .modal-input-area { margin-bottom: 18px; }
+        .modal-select, .modal-input {
+            width: 100%;
+            padding: 10px 12px;
+            min-height: 44px;
+            font-size: 1rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            outline: none;
+        }
+        .modal-select:focus, .modal-input:focus { border-color: var(--primary); }
+        .modal-buttons { display: flex; gap: 10px; justify-content: center; }
+        .modal-btn {
+            padding: 10px 20px;
+            min-height: 44px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.98rem;
+            font-weight: bold;
+            cursor: pointer;
+            flex: 1;
+            transition: background 0.2s;
+        }
+        .modal-btn-primary { background: var(--primary); color: white; }
+        .modal-btn-primary:hover { background: var(--primary-dark); }
+        .modal-btn-cancel { background: #e2e8f0; color: #475569; }
+        .modal-btn-cancel:hover { background: #cbd5e1; }
+
+        .code-block {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.82rem;
+            overflow-x: auto;
+            white-space: pre;
+            margin: 10px 0;
+        }
+
+        .diag-log {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 0.85rem;
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        .view-only-banner {
+            display: none;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1e40af;
+            padding: 10px 14px;
+            border-radius: 10px;
+            margin-bottom: 14px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            text-align: center;
+        }
+        .view-only-banner.show { display: block; }
+
+        @media (max-width: 900px) {
+            .grid-container { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 640px) {
+            .grid-container { grid-template-columns: 1fr; }
+            .control-group { flex-direction: column; }
+            .btn-reset { margin-left: 0; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            .input-section { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Live Sync & Control Bar -->
+    <div class="topbar">
+        <div class="sync-group">
+            <span id="syncPill" class="status-pill status-connecting">
+                <span class="dot"></span>
+                <span id="syncText">🔄 連線雲端中... (Connecting)</span>
+            </span>
+            <span id="lastSyncTime" style="font-size: 0.82rem; color: #64748b;"></span>
+        </div>
+        <div class="sync-group">
+            <button class="top-btn" onclick="openDiagnosticsModal()">🔧 同步診斷 (Diagnostics)</button>
+            <button id="shareViewBtn" class="top-btn" onclick="copyViewOnlyLink()">🔗 複製觀賞連結 (View Link)</button>
+            <button id="lockModeBtn" class="top-btn" onclick="toggleLockMode()">🔒 鎖定觀賞模式 (Lock View)</button>
+        </div>
+    </div>
+
+    <!-- Diagnostic Alert Banner (shown on Firebase error) -->
+    <div id="diagBanner" class="diag-banner">
+        <span id="diagBannerText">⚠️ 無法連線至 Firebase 雲端，現正使用本地/跨分頁備援同步。</span>
+        <button class="top-btn" onclick="openDiagnosticsModal()">查看修復指引 (Fix)</button>
+    </div>
+
+    <!-- View-Only Mode Banner -->
+    <div id="viewOnlyBanner" class="view-only-banner">
+        📺 學生觀賞模式 (Live View-Only Mode)：分數與抽獎結果會即時自動更新，編輯功能已鎖定。
+    </div>
+
+    <!-- Live Event Broadcast Toast -->
+    <div id="liveToast" class="live-toast">
+        <span id="liveToastIcon">⚡</span>
+        <span id="liveToastMsg"></span>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs">
+        <button class="tab-btn active" id="btn-marks" onclick="switchTab('marks')">📊 分數管理 (Class Marks)</button>
+        <button class="tab-btn" id="btn-roulette" onclick="switchTab('roulette')">🎡 輪盤抽獎 (Roulette)</button>
+    </div>
+
+    <!-- TAB 1: Marks Management -->
+    <div id="tab-marks">
+        <div class="header">
+            <h1>🧪 Science Class Mark</h1>
+            <div class="class-controls">
+                <select id="classSelector" class="class-selector" onchange="changeClass()"></select>
+                <select id="groupCountSelector" class="class-selector edit-only" onchange="changeGroupCount()" title="調整本班組數 (Groups per class)">
+                    <option value="4">👥 4 組 (Groups)</option>
+                    <option value="5">👥 5 組 (Groups)</option>
+                    <option value="6">👥 6 組 (Groups)</option>
+                    <option value="7">👥 7 組 (Groups)</option>
+                    <option value="8">👥 8 組 (Groups)</option>
+                    <option value="9">👥 9 組 (Groups)</option>
+                    <option value="10" selected>👥 10 組 (Groups)</option>
+                    <option value="11">👥 11 組 (Groups)</option>
+                    <option value="12">👥 12 組 (Groups)</option>
+                </select>
+                <button class="action-btn btn-add edit-only" onclick="showAddClassModal()">➕ 新增班別 (Add Class)</button>
+            </div>
+        </div>
+
+        <div id="groupsGrid" class="grid-container"></div>
+
+        <div class="data-controls">
+            <div class="data-title">💾 雲端同步與備份 (Live Cloud Sync &amp; Backup)</div>
+            <div class="control-group">
+                <button class="action-btn btn-download" onclick="downloadBackup()">⬇️ 下載備份 (Download JSON)</button>
+                <button class="action-btn btn-upload edit-only" onclick="document.getElementById('fileInput').click()">⬆️ 載入備份並同步 (Load &amp; Sync)</button>
+                <input type="file" id="fileInput" hidden accept=".json" onchange="loadBackup(this)">
+                <button class="action-btn btn-copy" onclick="copyForExcel()">📋 複製到 Excel (Copy)</button>
+                <button class="action-btn btn-reset edit-only" onclick="confirmResetClass()">🗑️ 重置本班分數 (Reset Class)</button>
+            </div>
+            <p style="margin-top: 12px; margin-bottom: 0; font-size: 0.86rem; color: #475569; line-height: 1.55;">
+                ☁️ <strong>即時雲端更新 (Live Update)：</strong>所有分數、能量卡及抽獎紀錄已連接 Firebase (<code>sci-interactive-data</code>)，在 iPad 或電腦修改會即時同步至所有裝置，同時保留瀏覽器本地快取 (IndexedDB &amp; LocalStorage) 作離線備援。<br>
+                ⚡ <strong>能量規則 (Energy Rule)：</strong>每獲得 10 分可累積 1 個能量 (⚡)，消耗能量可觸發隨機加減分事件。
+            </p>
+        </div>
+    </div>
+
+    <!-- TAB 2: Roulette -->
+    <div id="tab-roulette" style="display: none;">
+        <div class="roulette-layout">
+            <div class="input-section">
+                <input type="text" id="studentName" class="edit-only" placeholder="請輸入獲獎勵學生姓名 (Student Name)...">
+                <button id="spinBtn" class="edit-only" onclick="spinWheel()">開始抽獎 (Spin)</button>
+            </div>
+
+            <div class="wheel-wrapper">
+                <div class="pointer"></div>
+                <canvas id="wheelCanvas" width="320" height="320"></canvas>
+            </div>
+
+            <div id="prizeResult" class="prize-result">
+                請輸入學生姓名並點擊「開始抽獎」！
+            </div>
+        </div>
+
+        <div class="history-section">
+            <h2 style="margin-top: 0; color: var(--primary); font-size: 1.2rem;">📝 獎勵記錄 (Live Reward History)</h2>
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>時間 (Time)</th>
+                        <th>學生姓名 (Name)</th>
+                        <th>獎勵 (Prize)</th>
+                        <th>詳情 (Detail)</th>
+                        <th>狀態 (Status)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Custom Modal Overlay -->
+    <div id="appModal" class="modal-overlay">
+        <div id="modalBox" class="modal-box">
+            <div id="modalTitle" class="modal-title">提示</div>
+            <div id="modalMessage" class="modal-message"></div>
+
+            <!-- Input Area (Dynamic) -->
+            <div id="modalInputArea" class="modal-input-area" style="display: none;">
+                <input type="text" id="modalTextInput" class="modal-input" style="display: none;">
+                <input type="password" id="modalPwdInput" class="modal-input" style="display: none;">
+                <select id="modalSelectInput" class="modal-select" style="display: none;"></select>
+            </div>
+
+            <div class="modal-buttons">
+                <button id="modalCancelBtn" class="modal-btn modal-btn-cancel" onclick="closeModal()">取消</button>
+                <button id="modalConfirmBtn" class="modal-btn modal-btn-primary">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Diagnostics Modal -->
+    <div id="diagModal" class="modal-overlay">
+        <div class="modal-box wide">
+            <div class="modal-title">🔧 Firebase 雲端即時同步診斷 (Sync Diagnostics)</div>
+            <div id="diagDetails" class="diag-log">正在檢查連線狀態...</div>
+
+            <div style="margin-top: 12px;">
+                <label style="font-weight: 700; font-size: 0.9rem; display: block; margin-bottom: 6px;">
+                    自訂 Database URL 測試 (Custom Realtime DB URL):
+                </label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="customDbUrlInput" class="modal-input" placeholder="https://sci-interactive-data-default-rtdb.asia-southeast1.firebasedatabase.app">
+                    <button class="action-btn btn-download" onclick="testCustomDbUrl()">測試並連線</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 0.9rem;">建議 Firebase 規則 (/lessons Rules JSON):</span>
+                    <button class="top-btn" onclick="copyRulesJson()">📋 複製規則</button>
+                </div>
+                <div class="code-block" id="rulesJsonBlock">{
+  "rules": {
+    "lessons": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}</div>
+            </div>
+
+            <div class="modal-buttons" style="margin-top: 16px;">
+                <button class="modal-btn modal-btn-cancel" onclick="closeDiagnosticsModal()">關閉 (Close)</button>
+                <button class="modal-btn modal-btn-primary" onclick="forcePushLocalToCloud()">☁️ 強制上傳本地資料至雲端</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. Pre-Connected Firebase Config & Constants
+        // ==========================================
+        const FIREBASE_BASE_CONFIG = {
+            apiKey: "AIzaSyClWy_3U3DGZ5jqmAO44q8m-vUYUUth1nE",
+            authDomain: "sci-interactive-data.firebaseapp.com",
+            projectId: "sci-interactive-data",
+            storageBucket: "sci-interactive-data.firebasestorage.app",
+            messagingSenderId: "480852477684",
+            appId: "1:480852477684:web:569f4d05a84c9df478c0a1",
+            measurementId: "G-CHDXC97KLX"
+        };
+
+        const CANDIDATE_DB_URLS = [
+            "https://sci-interactive-data-default-rtdb.asia-southeast1.firebasedatabase.app",
+            "https://sci-interactive-data-default-rtdb.firebaseio.com",
+            "https://sci-interactive-data-default-rtdb.europe-west1.firebasedatabase.app"
+        ];
+
+        const LESSON_ID = "science_class_mark_rewards_live";
+        const TEACHER_PWD = "swcsciteacher";
+        const DEFAULT_GROUPS_COUNT = 10;
+
+        const DB_NAME = 'ScienceAppDB';
+        const STORE_NAME = 'ScienceStore';
+        const LS_KEY = 'science_marks_v4';
+        const CUSTOM_URL_KEY = 'sci_custom_db_url';
+
+        // ==========================================
+        // 2. App State
+        // ==========================================
+        let idb = null;
+        let fbApp = null;
+        let fbDb = null;
+        let fbRootRef = null;
+        let isCloudOnline = false;
+        let activeDbUrl = "";
+        let probeResults = [];
+        let lastToastEventId = 0;
+        let toastTimer = null;
+        let isViewOnly = new URLSearchParams(window.location.search).get('mode') === 'view';
+
+        let currentClass = "2C IS";
+        let schoolData = {
+            "2C IS": createInitialGroups(DEFAULT_GROUPS_COUNT),
+            "3A Physics": createInitialGroups(DEFAULT_GROUPS_COUNT)
+        };
+        let rouletteHistory = [];
+        let prevScoresMap = {};
+
+        function createInitialGroups(count = DEFAULT_GROUPS_COUNT) {
+            return Array.from({ length: count }, () => ({ score: 0, usedEnergy: 0 }));
+        }
+
+        function escHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function toFbKey(className) {
+            return encodeURIComponent(className).replace(/\./g, '%2E');
+        }
+
+        function normalizeGroups(rawGroups, fallbackCount = DEFAULT_GROUPS_COUNT) {
+            const arr = Array.isArray(rawGroups)
+                ? rawGroups
+                : (rawGroups && typeof rawGroups === 'object' ? Object.keys(rawGroups).sort((a,b) => Number(a) - Number(b)).map(k => rawGroups[k]) : []);
+            if (arr.length === 0) return createInitialGroups(fallbackCount);
+            return arr.map(item => {
+                if (typeof item === 'number') return { score: item, usedEnergy: 0 };
+                return {
+                    score: Number(item && item.score) || 0,
+                    usedEnergy: Number(item && item.usedEnergy) || 0
+                };
+            });
+        }
+
+        function normalizeHistory(rawHist) {
+            if (!rawHist) return [];
+            const arr = Array.isArray(rawHist) ? rawHist : Object.values(rawHist);
+            return arr
+                .filter(Boolean)
+                .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+        }
+
+        function buildCloudPayload(eventObj = null) {
+            const classesObj = {};
+            for (const cls in schoolData) {
+                classesObj[toFbKey(cls)] = {
+                    name: cls,
+                    groupCount: schoolData[cls].length,
+                    groups: schoolData[cls]
+                };
+            }
+            const payload = {
+                classes: classesObj,
+                rouletteHistory: rouletteHistory,
+                updatedAt: Date.now()
+            };
+            if (eventObj) {
+                payload.lastEvent = eventObj;
+            }
+            return payload;
+        }
+
+        function applyCloudSnapshot(val) {
+            if (!val || typeof val !== 'object') return false;
+
+            const oldScores = {};
+            if (schoolData[currentClass]) {
+                schoolData[currentClass].forEach((g, i) => { oldScores[i] = g.score; });
+            }
+
+            if (val.classes && typeof val.classes === 'object') {
+                const nextSchoolData = {};
+                Object.keys(val.classes).forEach(k => {
+                    const entry = val.classes[k];
+                    if (!entry) return;
+                    const clsName = entry.name || decodeURIComponent(k);
+                    const gCount = Math.min(12, Math.max(4, Number(entry.groupCount) || DEFAULT_GROUPS_COUNT));
+                    nextSchoolData[clsName] = normalizeGroups(entry.groups, gCount);
+                });
+                if (Object.keys(nextSchoolData).length > 0) {
+                    schoolData = nextSchoolData;
+                }
+            }
+
+            if (val.rouletteHistory !== undefined) {
+                rouletteHistory = normalizeHistory(val.rouletteHistory);
+            } else {
+                rouletteHistory = [];
+            }
+
+            if (!schoolData[currentClass]) {
+                currentClass = Object.keys(schoolData)[0] || "2C IS";
+            }
+
+            prevScoresMap = oldScores;
+            saveLocalOnly();
+            updateClassSelector();
+            renderGrid(true);
+            renderHistory();
+            updateLastSyncStamp();
+
+            if (val.lastEvent && val.lastEvent.id && val.lastEvent.id !== lastToastEventId) {
+                const ageMs = Date.now() - (Number(val.lastEvent.ts) || 0);
+                lastToastEventId = val.lastEvent.id;
+                if (ageMs < 15000) {
+                    showLiveToast(val.lastEvent.icon || '⚡', val.lastEvent.text || '');
+                }
+            }
+            return true;
+        }
+
+        // ==========================================
+        // 3. Startup, IndexedDB, LocalStorage & Firebase Auto-Probe
+        // ==========================================
+        window.onload = async function() {
+            applyViewOnlyUI();
+            await initIDB();
+            await loadLocalData();
+            updateClassSelector();
+            renderGrid(false);
+            initWheel();
+            renderHistory();
+
+            // Cross-tab fallback sync on same device
+            window.addEventListener('storage', (e) => {
+                if (e.key === LS_KEY && e.newValue && !isCloudOnline) {
+                    try {
+                        const parsed = JSON.parse(e.newValue);
+                        if (parsed.schoolData) schoolData = parsed.schoolData;
+                        if (parsed.rouletteHistory) rouletteHistory = parsed.rouletteHistory;
+                        updateClassSelector();
+                        renderGrid(true);
+                        renderHistory();
+                    } catch (err) {}
+                }
+            });
+
+            await initFirebaseWithAutoProbe();
+        };
+
+        function initIDB() {
+            return new Promise((resolve) => {
+                try {
+                    const request = indexedDB.open(DB_NAME, 2);
+                    request.onupgradeneeded = (e) => {
+                        idb = e.target.result;
+                        if (!idb.objectStoreNames.contains(STORE_NAME)) {
+                            idb.createObjectStore(STORE_NAME);
+                        }
+                    };
+                    request.onsuccess = (e) => { idb = e.target.result; resolve(true); };
+                    request.onerror = () => resolve(false);
+                } catch (e) {
+                    resolve(false);
+                }
+            });
+        }
+
+        function saveLocalOnly() {
+            const dataToSave = { schoolData, rouletteHistory };
+            try {
+                localStorage.setItem(LS_KEY, JSON.stringify(dataToSave));
+            } catch (e) {}
+            if (idb) {
+                try {
+                    const tx = idb.transaction(STORE_NAME, 'readwrite');
+                    tx.objectStore(STORE_NAME).put(dataToSave, 'appData');
+                } catch (e) {}
+            }
+        }
+
+        async function loadLocalData() {
+            let loadedData = null;
+            if (idb) {
+                try {
+                    loadedData = await new Promise((resolve) => {
+                        const tx = idb.transaction(STORE_NAME, 'readonly');
+                        const req = tx.objectStore(STORE_NAME).get('appData');
+                        req.onsuccess = () => resolve(req.result);
+                        req.onerror = () => resolve(null);
+                    });
+                } catch (e) {}
+            }
+            if (!loadedData) {
+                const lsData = localStorage.getItem(LS_KEY) || localStorage.getItem('science_marks_v3');
+                if (lsData) {
+                    try { loadedData = JSON.parse(lsData); } catch (e) {}
+                }
+            }
+
+            if (loadedData) {
+                if (loadedData.schoolData) {
+                    const migrated = {};
+                    for (const cls in loadedData.schoolData) {
+                        migrated[cls] = normalizeGroups(loadedData.schoolData[cls], DEFAULT_GROUPS_COUNT);
+                    }
+                    if (Object.keys(migrated).length > 0) schoolData = migrated;
+                }
+                if (loadedData.rouletteHistory) {
+                    rouletteHistory = normalizeHistory(loadedData.rouletteHistory);
+                }
+            }
+            if (!schoolData[currentClass]) {
+                currentClass = Object.keys(schoolData)[0] || "2C IS";
+            }
+        }
+
+        function setSyncStatus(state, message) {
+            const pill = document.getElementById('syncPill');
+            const txt = document.getElementById('syncText');
+            const banner = document.getElementById('diagBanner');
+            pill.className = 'status-pill status-' + state;
+            txt.textContent = message;
+            if (state === 'offline') {
+                banner.classList.add('show');
+            } else {
+                banner.classList.remove('show');
+            }
+        }
+
+        function updateLastSyncStamp() {
+            const el = document.getElementById('lastSyncTime');
+            if (isCloudOnline) {
+                el.textContent = '最後同步: ' + new Date().toLocaleTimeString('zh-HK');
+            }
+        }
+
+        async function probeDatabaseUrl(url) {
+            const cleanUrl = url.replace(/\/+$/, '');
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            try {
+                const res = await fetch(`${cleanUrl}/lessons.json?shallow=true`, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                clearTimeout(timer);
+                return { url: cleanUrl, ok: res.ok, status: res.status };
+            } catch (err) {
+                clearTimeout(timer);
+                return { url: cleanUrl, ok: false, status: err.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERR' };
+            }
+        }
+
+        async function initFirebaseWithAutoProbe(explicitCustomUrl = null) {
+            setSyncStatus('connecting', '🔄 偵測雲端資料庫中... (Probing Cloud)');
+            probeResults = [];
+
+            const urlsToTry = [];
+            const savedCustom = explicitCustomUrl || localStorage.getItem(CUSTOM_URL_KEY);
+            if (savedCustom && savedCustom.startsWith('https://')) {
+                urlsToTry.push(savedCustom.replace(/\/+$/, ''));
+            }
+            CANDIDATE_DB_URLS.forEach(u => {
+                if (!urlsToTry.includes(u)) urlsToTry.push(u);
+            });
+
+            let matchedUrl = null;
+            for (const url of urlsToTry) {
+                const result = await probeDatabaseUrl(url);
+                probeResults.push(result);
+                if (result.ok) {
+                    matchedUrl = result.url;
+                    break;
+                }
+            }
+
+            if (!matchedUrl) {
+                isCloudOnline = false;
+                const hasAuthErr = probeResults.some(r => r.status === 401 || r.status === 403);
+                const msg = hasAuthErr
+                    ? '⚠️ Firebase 權限未開放 (401/403)，正使用本地同步'
+                    : '⚠️ 離線或找不到資料庫，正使用本地同步';
+                setSyncStatus('offline', msg);
+                document.getElementById('diagBannerText').textContent = msg + ' — 請點擊「查看修復指引」檢查規則或網址。';
+                return false;
+            }
+
+            try {
+                if (fbRootRef) {
+                    fbRootRef.off();
+                }
+                if (fbApp) {
+                    await fbApp.delete();
+                }
+
+                const config = Object.assign({}, FIREBASE_BASE_CONFIG, { databaseURL: matchedUrl });
+                fbApp = firebase.initializeApp(config, 'sci-class-mark-' + Date.now());
+                fbDb = fbApp.database();
+                fbRootRef = fbDb.ref(`lessons/${LESSON_ID}`);
+                activeDbUrl = matchedUrl;
+
+                // Perform initial handshake read
+                const snap = await fbRootRef.once('value');
+                isCloudOnline = true;
+                setSyncStatus('online', '☁️ 雲端即時同步中 (Live Cloud Sync)');
+
+                if (!snap.exists()) {
+                    // First-time migration: push existing local/default data to cloud
+                    await fbRootRef.set(buildCloudPayload());
+                } else {
+                    applyCloudSnapshot(snap.val());
+                }
+
+                // Subscribe to live real-time updates
+                fbRootRef.on('value', (snapshot) => {
+                    isCloudOnline = true;
+                    setSyncStatus('online', '☁️ 雲端即時同步中 (Live Cloud Sync)');
+                    if (snapshot.exists()) {
+                        applyCloudSnapshot(snapshot.val());
+                    }
+                }, (err) => {
+                    console.error('Firebase listener error:', err);
+                    isCloudOnline = false;
+                    setSyncStatus('offline', '⚠️ 雲端連線中斷 (Local Fallback)');
+                });
+
+                return true;
+            } catch (err) {
+                console.error('Firebase init error:', err);
+                isCloudOnline = false;
+                setSyncStatus('offline', '⚠️ 雲端初始化失敗 (Local Fallback)');
+                return false;
+            }
+        }
+
+        async function syncAllToCloud(eventObj = null) {
+            saveLocalOnly();
+            if (!isCloudOnline || !fbRootRef) return;
+            try {
+                await fbRootRef.set(buildCloudPayload(eventObj));
+                updateLastSyncStamp();
+            } catch (err) {
+                console.error('Firebase write failed:', err);
+                setSyncStatus('offline', '⚠️ 寫入雲端失敗，已暫存本地');
+            }
+        }
+
+        async function syncClassToCloud(className, eventObj = null) {
+            saveLocalOnly();
+            if (!isCloudOnline || !fbRootRef) return;
+            try {
+                const updates = {};
+                updates[`classes/${toFbKey(className)}`] = {
+                    name: className,
+                    groupCount: schoolData[className].length,
+                    groups: schoolData[className]
+                };
+                updates['updatedAt'] = Date.now();
+                if (eventObj) {
+                    updates['lastEvent'] = eventObj;
+                }
+                await fbRootRef.update(updates);
+                updateLastSyncStamp();
+            } catch (err) {
+                console.error('Firebase class update failed:', err);
+                setSyncStatus('offline', '⚠️ 寫入雲端失敗，已暫存本地');
+            }
+        }
+
+        async function syncHistoryToCloud(eventObj = null) {
+            saveLocalOnly();
+            if (!isCloudOnline || !fbRootRef) return;
+            try {
+                const updates = {
+                    rouletteHistory: rouletteHistory,
+                    updatedAt: Date.now()
+                };
+                if (eventObj) {
+                    updates.lastEvent = eventObj;
+                }
+                await fbRootRef.update(updates);
+                updateLastSyncStamp();
+            } catch (err) {
+                console.error('Firebase history update failed:', err);
+                setSyncStatus('offline', '⚠️ 寫入雲端失敗，已暫存本地');
+            }
+        }
+
+        function showLiveToast(icon, message) {
+            if (!message) return;
+            const toast = document.getElementById('liveToast');
+            document.getElementById('liveToastIcon').textContent = icon;
+            document.getElementById('liveToastMsg').textContent = message;
+            toast.classList.add('show');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 5000);
+        }
+
+        // ==========================================
+        // 4. Diagnostics & View-Only Lock Mode
+        // ==========================================
+        function openDiagnosticsModal() {
+            const box = document.getElementById('diagDetails');
+            let html = `<div><strong>專案 ID:</strong> <code>${escHtml(FIREBASE_BASE_CONFIG.projectId)}</code></div>`;
+            html += `<div><strong>資料路徑:</strong> <code>lessons/${escHtml(LESSON_ID)}</code></div>`;
+            html += `<div><strong>目前狀態:</strong> ${isCloudOnline ? '✅ 已連線 (' + escHtml(activeDbUrl) + ')' : '❌ 未連線 (使用本地備援)'}</div>`;
+            if (probeResults.length > 0) {
+                html += `<div style="margin-top:8px;"><strong>節點偵測紀錄 (Probe Log):</strong></div>`;
+                probeResults.forEach(r => {
+                    html += `<div>${r.ok ? '🟢' : '🔴'} <code>${escHtml(r.url)}</code> — HTTP ${escHtml(r.status)}</div>`;
+                });
+            }
+            box.innerHTML = html;
+            document.getElementById('customDbUrlInput').value = localStorage.getItem(CUSTOM_URL_KEY) || activeDbUrl || '';
+            document.getElementById('diagModal').style.display = 'flex';
+        }
+
+        function closeDiagnosticsModal() {
+            document.getElementById('diagModal').style.display = 'none';
+        }
+
+        async function testCustomDbUrl() {
+            const url = document.getElementById('customDbUrlInput').value.trim().replace(/\/+$/, '');
+            if (!url.startsWith('https://')) {
+                showModal({ title: '格式錯誤', message: '請輸入以 https:// 開頭的 Firebase Realtime Database 網址。', hideCancel: true });
+                return;
+            }
+            localStorage.setItem(CUSTOM_URL_KEY, url);
+            const ok = await initFirebaseWithAutoProbe(url);
+            openDiagnosticsModal();
+            if (ok) {
+                showLiveToast('☁️', '已成功連線至自訂 Firebase 資料庫！');
+            }
+        }
+
+        function copyRulesJson() {
+            const txt = document.getElementById('rulesJsonBlock').textContent;
+            navigator.clipboard.writeText(txt).then(() => {
+                showLiveToast('📋', '已複製 Firebase /lessons 規則 JSON！');
+            });
+        }
+
+        async function forcePushLocalToCloud() {
+            if (!isCloudOnline || !fbRootRef) {
+                showModal({ title: '未連線', message: '目前尚未連線至雲端資料庫，無法上傳。', hideCancel: true });
+                return;
+            }
+            await syncAllToCloud({
+                id: Date.now(),
+                icon: '☁️',
+                text: '老師已手動同步最新班級分數至雲端',
+                ts: Date.now()
+            });
+            closeDiagnosticsModal();
+            showLiveToast('☁️', '已將目前本地分數與抽獎紀錄強制同步至雲端！');
+        }
+
+        function applyViewOnlyUI() {
+            const banner = document.getElementById('viewOnlyBanner');
+            const lockBtn = document.getElementById('lockModeBtn');
+            if (isViewOnly) {
+                banner.classList.add('show');
+                lockBtn.textContent = '🔓 教師解鎖 (Unlock)';
+                lockBtn.classList.add('locked');
+            } else {
+                banner.classList.remove('show');
+                lockBtn.textContent = '🔒 鎖定觀賞模式 (Lock View)';
+                lockBtn.classList.remove('locked');
+            }
+            document.querySelectorAll('.edit-only').forEach(el => {
+                el.disabled = isViewOnly;
+                if (el.tagName === 'BUTTON' || el.tagName === 'SELECT') {
+                    el.style.opacity = isViewOnly ? '0.45' : '';
+                }
+            });
+        }
+
+        function toggleLockMode() {
+            if (!isViewOnly) {
+                isViewOnly = true;
+                applyViewOnlyUI();
+                renderGrid(false);
+                renderHistory();
+            } else {
+                showModal({
+                    title: '🔓 教師解鎖 (Teacher Unlock)',
+                    message: '請輸入教師密碼以解除觀賞鎖定：',
+                    type: 'password',
+                    placeholder: '輸入教師密碼...',
+                    onConfirm: (pwd) => {
+                        if (pwd === TEACHER_PWD) {
+                            isViewOnly = false;
+                            applyViewOnlyUI();
+                            renderGrid(false);
+                            renderHistory();
+                            showLiveToast('🔓', '已切換回教師編輯模式');
+                        } else {
+                            setTimeout(() => {
+                                showModal({ title: '密碼錯誤', message: '❌ 教師密碼不正確。', hideCancel: true });
+                            }, 150);
+                        }
+                    }
+                });
+            }
+        }
+
+        function copyViewOnlyLink() {
+            if (window.location.protocol === 'file:') {
+                showModal({
+                    title: '提示 (Local File)',
+                    message: '目前正在本機開啟檔案。將此 HTML 上載至 GitHub Pages 後，即可使用此按鈕一鍵複製學生唯讀觀賞連結 (<code>?mode=view</code>)！',
+                    hideCancel: true
+                });
+                return;
+            }
+            const url = new URL(window.location.href);
+            url.searchParams.set('mode', 'view');
+            navigator.clipboard.writeText(url.toString()).then(() => {
+                showLiveToast('🔗', '已複製學生即時觀賞連結 (唯讀模式)！');
+            });
+        }
+
+        // ==========================================
+        // 5. Custom Modal Logic
+        // ==========================================
+        let modalConfirmCallback = null;
+
+        function showModal(options) {
+            document.getElementById('modalTitle').innerHTML = options.title || '提示';
+            document.getElementById('modalMessage').innerHTML = options.message || '';
+
+            const inputArea = document.getElementById('modalInputArea');
+            const textInput = document.getElementById('modalTextInput');
+            const pwdInput = document.getElementById('modalPwdInput');
+            const selectInput = document.getElementById('modalSelectInput');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+
+            inputArea.style.display = 'none';
+            textInput.style.display = 'none';
+            pwdInput.style.display = 'none';
+            selectInput.style.display = 'none';
+            textInput.value = '';
+            pwdInput.value = '';
+            selectInput.innerHTML = '';
+
+            if (options.type === 'input') {
+                inputArea.style.display = 'block';
+                textInput.style.display = 'block';
+                textInput.placeholder = options.placeholder || '';
+                setTimeout(() => textInput.focus(), 60);
+            } else if (options.type === 'password') {
+                inputArea.style.display = 'block';
+                pwdInput.style.display = 'block';
+                pwdInput.placeholder = options.placeholder || '';
+                setTimeout(() => pwdInput.focus(), 60);
+            } else if (options.type === 'select') {
+                inputArea.style.display = 'block';
+                selectInput.style.display = 'block';
+                (options.selectOptions || []).forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    selectInput.appendChild(option);
+                });
+            }
+
+            cancelBtn.style.display = options.hideCancel ? 'none' : 'block';
+            confirmBtn.textContent = options.confirmText || '確定';
+
+            modalConfirmCallback = () => {
+                let result = true;
+                if (options.type === 'input') result = textInput.value.trim();
+                if (options.type === 'password') result = pwdInput.value.trim();
+                if (options.type === 'select') result = selectInput.value;
+                closeModal();
+                if (options.onConfirm) options.onConfirm(result);
+            };
+
+            confirmBtn.onclick = modalConfirmCallback;
+            document.getElementById('appModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('appModal').style.display = 'none';
+            modalConfirmCallback = null;
+        }
+
+        // ==========================================
+        // 6. Tab, Class & Per-Class Group Count Management
+        // ==========================================
+        function switchTab(tab) {
+            document.getElementById('tab-marks').style.display = tab === 'marks' ? 'block' : 'none';
+            document.getElementById('tab-roulette').style.display = tab === 'roulette' ? 'block' : 'none';
+            document.getElementById('btn-marks').classList.toggle('active', tab === 'marks');
+            document.getElementById('btn-roulette').classList.toggle('active', tab === 'roulette');
+        }
+
+        function updateClassSelector() {
+            const selector = document.getElementById('classSelector');
+            selector.innerHTML = '';
+            Object.keys(schoolData).forEach(cls => {
+                const opt = document.createElement('option');
+                opt.value = cls;
+                opt.textContent = `Class ${cls} (${schoolData[cls].length} 組)`;
+                if (cls === currentClass) opt.selected = true;
+                selector.appendChild(opt);
+            });
+            const grpSel = document.getElementById('groupCountSelector');
+            if (schoolData[currentClass]) {
+                grpSel.value = String(Math.min(12, Math.max(4, schoolData[currentClass].length)));
+            }
+        }
+
+        function changeClass() {
+            currentClass = document.getElementById('classSelector').value;
+            prevScoresMap = {};
+            updateClassSelector();
+            renderGrid(false);
+        }
+
+        async function changeGroupCount() {
+            if (isViewOnly) return;
+            const newCount = parseInt(document.getElementById('groupCountSelector').value, 10);
+            if (isNaN(newCount) || newCount < 4 || newCount > 12) return;
+
+            const cur = schoolData[currentClass] || createInitialGroups(DEFAULT_GROUPS_COUNT);
+            const next = [];
+            for (let i = 0; i < newCount; i++) {
+                next.push(cur[i] ? cur[i] : { score: 0, usedEnergy: 0 });
+            }
+            schoolData[currentClass] = next;
+            updateClassSelector();
+            renderGrid(false);
+            await syncClassToCloud(currentClass, {
+                id: Date.now(),
+                icon: '👥',
+                text: `${currentClass} 組數已調整為 ${newCount} 組`,
+                ts: Date.now()
+            });
+        }
+
+        function showAddClassModal() {
+            if (isViewOnly) return;
+            showModal({
+                title: '➕ 新增班別 (Add Class)',
+                message: '請輸入新班別名稱 (例如：4A Chemistry)：',
+                type: 'input',
+                placeholder: '例如：4A Chemistry',
+                onConfirm: async (className) => {
+                    if (!className) return;
+                    if (!schoolData[className]) {
+                        schoolData[className] = createInitialGroups(DEFAULT_GROUPS_COUNT);
+                        currentClass = className;
+                        updateClassSelector();
+                        renderGrid(false);
+                        await syncClassToCloud(className, {
+                            id: Date.now(),
+                            icon: '🏫',
+                            text: `已新增班別：${className}`,
+                            ts: Date.now()
+                        });
+                        showModal({ title: '成功', message: `✅ 已成功新增班別：${escHtml(className)}`, hideCancel: true });
+                    } else {
+                        showModal({ title: '錯誤', message: '⚠️ 此班別已存在！', hideCancel: true });
+                    }
+                }
+            });
+        }
+
+        // ==========================================
+        // 7. Marks Grid & Energy Logic (Live Synced)
+        // ==========================================
+        function renderGrid(animateChanges = false) {
+            const grid = document.getElementById('groupsGrid');
+            grid.innerHTML = '';
+            if (!schoolData[currentClass]) {
+                schoolData[currentClass] = createInitialGroups(DEFAULT_GROUPS_COUNT);
+            }
+
+            schoolData[currentClass].forEach((group, index) => {
+                const availableEnergy = Math.max(0, Math.floor(group.score / 10) - group.usedEnergy);
+                let pulseClass = '';
+                if (animateChanges && prevScoresMap[index] !== undefined && prevScoresMap[index] !== group.score) {
+                    pulseClass = group.score > prevScoresMap[index] ? ' pulse-up' : ' pulse-down';
+                }
+
+                const card = document.createElement('div');
+                card.className = 'card' + pulseClass;
+                card.innerHTML = `
+                    <div class="card-header">
+                        <div class="group-title">Group ${index + 1}</div>
+                        <div class="energy-badge">⚡ ${availableEnergy}</div>
+                    </div>
+                    <div class="score-display" id="score-${index}">${group.score}</div>
+                    <div class="buttons">
+                        <button class="btn btn-minus" onclick="updateScore(${index}, -1)" ${isViewOnly ? 'disabled' : ''}>−</button>
+                        <button class="btn btn-plus" onclick="updateScore(${index}, 1)" ${isViewOnly ? 'disabled' : ''}>+</button>
+                    </div>
+                    <button class="btn-energy" onclick="useEnergy(${index})" ${(availableEnergy <= 0 || isViewOnly) ? 'disabled' : ''}>
+                        ⚡ 消耗能量 (抽卡)
+                    </button>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        async function updateScore(groupIndex, change) {
+            if (isViewOnly) return;
+            const prev = schoolData[currentClass][groupIndex].score;
+            prevScoresMap = {};
+            schoolData[currentClass].forEach((g, i) => { prevScoresMap[i] = g.score; });
+
+            schoolData[currentClass][groupIndex].score = prev + change;
+            renderGrid(true);
+            await syncClassToCloud(currentClass);
+        }
+
+        async function useEnergy(groupIndex) {
+            if (isViewOnly) return;
+            const group = schoolData[currentClass][groupIndex];
+            const availableEnergy = Math.floor(group.score / 10) - group.usedEnergy;
+            if (availableEnergy <= 0) return;
+
+            group.usedEnergy += 1;
+            renderGrid(false);
+            await syncClassToCloud(currentClass);
+
+            const r = Math.random();
+            let eventType = '';
+            let eventName = '';
+
+            if (r < 0.25) { eventType = 'add5'; eventName = '自己組加 5 分！'; }
+            else if (r < 0.50) { eventType = 'add3'; eventName = '自己組加 3 分！'; }
+            else if (r < 0.75) { eventType = 'minus3'; eventName = '指定組別減 3 分！'; }
+            else { eventType = 'top2minus2'; eventName = '最高分的兩組各減 2 分！'; }
+
+            if (eventType === 'minus3') {
+                const options = schoolData[currentClass].map((g, i) => ({
+                    value: i,
+                    label: `Group ${i + 1} (目前 ${g.score} 分)`
+                }));
+
+                showModal({
+                    title: '⚡ 能量事件觸發！',
+                    message: `第 ${groupIndex + 1} 組觸發了事件：<br><strong style="color:var(--danger);font-size:1.25rem;">${eventName}</strong><br><br>請選擇要扣分的組別：`,
+                    type: 'select',
+                    selectOptions: options,
+                    hideCancel: true,
+                    confirmText: '執行扣分',
+                    onConfirm: async (targetIndex) => {
+                        targetIndex = parseInt(targetIndex, 10);
+                        prevScoresMap = {};
+                        schoolData[currentClass].forEach((g, i) => { prevScoresMap[i] = g.score; });
+                        schoolData[currentClass][targetIndex].score -= 3;
+                        renderGrid(true);
+                        await syncClassToCloud(currentClass, {
+                            id: Date.now(),
+                            icon: '⚡',
+                            text: `[${currentClass}] Group ${groupIndex + 1} 能量卡：Group ${targetIndex + 1} 扣除 3 分！`,
+                            ts: Date.now()
+                        });
+                        showModal({ title: '執行完畢', message: `已將 Group ${targetIndex + 1} 扣除 3 分！`, hideCancel: true });
+                    }
+                });
+            } else {
+                showModal({
+                    title: '⚡ 能量事件觸發！',
+                    message: `第 ${groupIndex + 1} 組觸發了事件：<br><strong style="color:var(--danger);font-size:1.25rem;">${eventName}</strong>`,
+                    hideCancel: true,
+                    confirmText: '確認執行',
+                    onConfirm: async () => {
+                        prevScoresMap = {};
+                        schoolData[currentClass].forEach((g, i) => { prevScoresMap[i] = g.score; });
+                        let broadcastMsg = '';
+
+                        if (eventType === 'add5') {
+                            schoolData[currentClass][groupIndex].score += 5;
+                            broadcastMsg = `[${currentClass}] Group ${groupIndex + 1} 能量卡：自己組加 5 分！`;
+                        } else if (eventType === 'add3') {
+                            schoolData[currentClass][groupIndex].score += 3;
+                            broadcastMsg = `[${currentClass}] Group ${groupIndex + 1} 能量卡：自己組加 3 分！`;
+                        } else if (eventType === 'top2minus2') {
+                            const groupsWithIndex = schoolData[currentClass].map((g, i) => ({ index: i, score: g.score }));
+                            groupsWithIndex.sort((a, b) => b.score - a.score);
+
+                            const affected = [];
+                            if (groupsWithIndex[0]) {
+                                schoolData[currentClass][groupsWithIndex[0].index].score -= 2;
+                                affected.push(`Group ${groupsWithIndex[0].index + 1}`);
+                            }
+                            if (groupsWithIndex[1]) {
+                                schoolData[currentClass][groupsWithIndex[1].index].score -= 2;
+                                affected.push(`Group ${groupsWithIndex[1].index + 1}`);
+                            }
+                            broadcastMsg = `[${currentClass}] Group ${groupIndex + 1} 能量卡：最高分組別 (${affected.join(', ')}) 各扣 2 分！`;
+
+                            setTimeout(() => {
+                                showModal({
+                                    title: '執行完畢',
+                                    message: `已將最高分組別 (${affected.join(', ')}) 各扣除 2 分！`,
+                                    hideCancel: true
+                                });
+                            }, 200);
+                        }
+
+                        renderGrid(true);
+                        await syncClassToCloud(currentClass, {
+                            id: Date.now(),
+                            icon: '⚡',
+                            text: broadcastMsg,
+                            ts: Date.now()
+                        });
+                    }
+                });
+            }
+        }
+
+        function confirmResetClass() {
+            if (isViewOnly) return;
+            const currentCount = schoolData[currentClass] ? schoolData[currentClass].length : DEFAULT_GROUPS_COUNT;
+            showModal({
+                title: '🗑️ 重置分數 (Reset Class)',
+                message: `確定要將 <strong>${escHtml(currentClass)}</strong> (${currentCount} 組) 的所有分數與能量重置為 0 嗎？<br>（此操作會同步至所有已連線裝置）`,
+                onConfirm: async () => {
+                    schoolData[currentClass] = createInitialGroups(currentCount);
+                    renderGrid(false);
+                    await syncClassToCloud(currentClass, {
+                        id: Date.now(),
+                        icon: '🗑️',
+                        text: `已重置 ${currentClass} 所有分數與能量`,
+                        ts: Date.now()
+                    });
+                }
+            });
+        }
+
+        // ==========================================
+        // 8. Data Export & Import (Cloud-Synced)
+        // ==========================================
+        function downloadBackup() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ schoolData, rouletteHistory }, null, 2));
+            const a = document.createElement('a');
+            a.href = dataStr;
+            a.download = "science_app_backup_" + new Date().toISOString().slice(0, 10) + ".json";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        function loadBackup(inputElement) {
+            if (isViewOnly) return;
+            const file = inputElement.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const loadedData = JSON.parse(e.target.result);
+                    if (loadedData.schoolData) {
+                        const migrated = {};
+                        for (const cls in loadedData.schoolData) {
+                            migrated[cls] = normalizeGroups(loadedData.schoolData[cls], DEFAULT_GROUPS_COUNT);
+                        }
+                        schoolData = migrated;
+                        if (loadedData.rouletteHistory) {
+                            rouletteHistory = normalizeHistory(loadedData.rouletteHistory);
+                        }
+                        if (!schoolData[currentClass]) {
+                            currentClass = Object.keys(schoolData)[0] || "2C IS";
+                        }
+                        updateClassSelector();
+                        renderGrid(false);
+                        renderHistory();
+                        await syncAllToCloud({
+                            id: Date.now(),
+                            icon: '⬆️',
+                            text: '已載入備份檔案並同步至雲端',
+                            ts: Date.now()
+                        });
+                        showModal({ title: '成功', message: '✅ 備份載入成功，並已即時同步至雲端！', hideCancel: true });
+                    }
+                } catch (err) {
+                    showModal({ title: '錯誤', message: '❌ 載入失敗，檔案格式不正確或已損壞。', hideCancel: true });
+                }
+            };
+            reader.readAsText(file);
+            inputElement.value = '';
+        }
+
+        function copyForExcel() {
+            const scores = (schoolData[currentClass] || []).map(g => g.score);
+            navigator.clipboard.writeText(scores.join('\t')).then(() => {
+                showModal({ title: '成功', message: '📋 分數已複製！可直接貼上至 Excel。', hideCancel: true });
+            }).catch(err => {
+                showModal({ title: '錯誤', message: '複製失敗：' + escHtml(err), hideCancel: true });
+            });
+        }
+
+        // ==========================================
+        // 9. Roulette Logic (Live Synced History)
+        // ==========================================
+        const prizes = [
+            { name: "座位選擇權", color: "#fca5a5", percent: 10 },
+            { name: "小零食", color: "#93c5fd", percent: 20 },
+            { name: "科學小禮品", color: "#86efac", percent: 30 },
+            { name: "老師的讚美", color: "#fde047", percent: 40 }
+        ];
+
+        const praises = [
+            "太棒了！你今天的表現非常出色！",
+            "你的科學思維越來越敏銳了，繼續保持！",
+            "我看到了你的努力，進步非常大！",
+            "你問的問題非常有深度，這才是科學家精神！",
+            "你的實驗操作非常細心，值得全班學習！",
+            "你總是能給我們帶來驚喜的答案，真聰明！",
+            "你的專注力令人佩服，做得好！",
+            "樂於幫助同學，你的團隊精神太棒了！",
+            "你對科學的熱情感染了大家，非常棒！",
+            "今天的你超越了昨天的自己，老師為你感到驕傲！"
+        ];
+
+        let currentRotation = 0;
+        let isSpinning = false;
+
+        function initWheel() {
+            const canvas = document.getElementById('wheelCanvas');
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = centerX;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let currentAngle = -Math.PI / 2;
+
+            prizes.forEach((prize) => {
+                const sliceAngle = (prize.percent / 100) * 2 * Math.PI;
+                prize.startAngle = currentAngle;
+                prize.endAngle = currentAngle + sliceAngle;
+                prize.centerAngle = currentAngle + sliceAngle / 2;
+
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, prize.startAngle, prize.endAngle);
+                ctx.fillStyle = prize.color;
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = "#ffffff";
+                ctx.stroke();
+
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(prize.centerAngle);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#1e293b";
+                ctx.font = "bold 15px sans-serif";
+                ctx.fillText(prize.name, radius - 20, 5);
+                ctx.restore();
+
+                currentAngle += sliceAngle;
+            });
+        }
+
+        function spinWheel() {
+            if (isSpinning || isViewOnly) return;
+            const nameInput = document.getElementById('studentName');
+            const name = nameInput.value.trim();
+
+            if (!name) {
+                showModal({ title: '提示', message: '⚠️ 請先輸入獲獎勵學生的姓名！', hideCancel: true });
+                nameInput.focus();
+                return;
+            }
+
+            isSpinning = true;
+            document.getElementById('spinBtn').disabled = true;
+            document.getElementById('prizeResult').innerHTML = '🔄 輪盤轉動中...';
+
+            const rand = Math.random() * 100;
+            let cumulative = 0;
+            let winIndex = 0;
+
+            for (let i = 0; i < prizes.length; i++) {
+                cumulative += prizes[i].percent;
+                if (rand < cumulative) { winIndex = i; break; }
+            }
+
+            const centerDeg = (prizes[winIndex].centerAngle + Math.PI / 2) * (180 / Math.PI);
+            const spins = 5;
+            const targetRotation = currentRotation + (360 * spins) + (360 - centerDeg) - (currentRotation % 360);
+
+            const canvas = document.getElementById('wheelCanvas');
+            canvas.style.transition = 'transform 4s cubic-bezier(0.17, 0.67, 0.1, 1)';
+            canvas.style.transform = `rotate(${targetRotation}deg)`;
+
+            currentRotation = targetRotation;
+
+            setTimeout(() => {
+                isSpinning = false;
+                document.getElementById('spinBtn').disabled = isViewOnly;
+                handleWin(name, winIndex);
+            }, 4000);
+        }
+
+        async function handleWin(name, winIndex) {
+            const prize = prizes[winIndex];
+            let detail = '';
+            const displayName = prize.name === '老師的讚美' ? '老師的讚美說話' : prize.name;
+
+            if (prize.name === '老師的讚美') {
+                detail = praises[Math.floor(Math.random() * praises.length)];
+            }
+
+            const resultDiv = document.getElementById('prizeResult');
+            const prizeColor = prize.color === '#fde047' ? '#d97706' : prize.color;
+            resultDiv.innerHTML = `🎉 恭喜 <strong>${escHtml(name)}</strong> 抽中：<br>
+                <span style="color:${prizeColor}; font-size: 1.75rem; font-weight: bold; display: inline-block; margin-top: 8px;">
+                    ${escHtml(displayName)}
+                </span>`;
+
+            if (detail) {
+                resultDiv.innerHTML += `<br><br><em style="color:#475569; font-size: 1.05rem;">「${escHtml(detail)}」</em>`;
+            }
+
+            rouletteHistory.unshift({
+                id: Date.now(),
+                name: name,
+                prize: displayName,
+                detail: detail,
+                used: false,
+                date: new Date().toLocaleString('zh-HK')
+            });
+
+            renderHistory();
+            document.getElementById('studentName').value = '';
+
+            await syncHistoryToCloud({
+                id: Date.now(),
+                icon: '🎉',
+                text: `恭喜 ${name} 抽中「${displayName}」！`,
+                ts: Date.now()
+            });
+        }
+
+        function renderHistory() {
+            const tbody = document.querySelector('#historyTable tbody');
+            tbody.innerHTML = '';
+
+            if (rouletteHistory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">暫無抽獎記錄</td></tr>';
+                return;
+            }
+
+            rouletteHistory.forEach(record => {
+                const tr = document.createElement('tr');
+                if (record.used) tr.className = 'used-row';
+
+                tr.innerHTML = `
+                    <td style="font-size: 0.9rem; color: #64748b;">${escHtml(record.date)}</td>
+                    <td style="font-weight: bold;">${escHtml(record.name)}</td>
+                    <td><span style="color: #0369a1; font-weight: 600;">${escHtml(record.prize)}</span></td>
+                    <td style="font-size: 0.9rem; max-width: 220px; white-space: normal;">${escHtml(record.detail) || '-'}</td>
+                    <td>
+                        ${record.used
+                            ? '<span class="used-badge">已消耗</span>'
+                            : `<button class="use-btn" onclick="markUsed(${Number(record.id)})" ${isViewOnly ? 'disabled' : ''}>標記消耗</button>`
+                        }
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function markUsed(id) {
+            if (isViewOnly) return;
+            const record = rouletteHistory.find(r => Number(r.id) === Number(id));
+            if (record) {
+                showModal({
+                    title: '標記消耗',
+                    message: `確定要將 <strong>${escHtml(record.name)}</strong> 的「${escHtml(record.prize)}」標記為已消耗嗎？`,
+                    onConfirm: async () => {
+                        record.used = true;
+                        renderHistory();
+                        await syncHistoryToCloud();
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
